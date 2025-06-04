@@ -1,0 +1,151 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Comment System</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <style>
+    :root {
+      --bg-dark: #000428;
+      --bg-light: #ffffff;
+      --text-dark: #ffffff;
+      --text-light: #000000;
+      --highlight: #ffdd57;
+    }
+    body {
+      background: var(--bg-dark);
+      color: var(--text-dark);
+      font-family: sans-serif;
+      padding: 30px;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+    body.light {
+      background: var(--bg-light);
+      color: var(--text-light);
+    }
+    input, textarea {
+      width: 80%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 10px;
+      border: none;
+      outline: none;
+      font-size: 16px;
+    }
+    button {
+      background: linear-gradient(to right,#9b00ff,#ff0076);
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .comment {
+      background-color: rgba(255,255,255,0.1);
+      padding: 15px;
+      border-radius: 12px;
+      margin: 10px auto;
+      max-width: 600px;
+      text-align: left;
+      box-shadow: 0 0 10px rgba(255,255,255,0.2);
+    }
+    .comment strong {
+      color: var(--highlight);
+      font-size: 18px;
+    }
+    .comment small {
+      color: #ccc;
+      font-size: 12px;
+    }
+    #comments {
+      margin-top: 30px;
+    }
+    .reply {
+      margin-top: 10px;
+      padding-left: 20px;
+      font-size: 14px;
+      color: #f1f1f1;
+    }
+    .reply small {
+      font-size: 11px;
+      color: #ccc;
+    }
+    .theme-toggle {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" onclick="toggleTheme()">🌓</button>
+  <h2>💬 Leave a Comment</h2>
+  <input type="text" id="name" placeholder="Your Name"/><br/>
+  <textarea id="comment" placeholder="Your Comment 😊"></textarea><br/>
+  <button onclick="submitComment()">Post Comment</button>
+
+  <div id="comments"></div>
+
+  <script>
+    function toggleTheme() {
+      document.body.classList.toggle('light');
+    }
+
+    function submitComment() {
+      const name = document.getElementById('name').value.trim();
+      const comment = document.getElementById('comment').value.trim();
+      if (!name || !comment) return alert("Fill out both fields!");
+
+      fetch('/comments', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name, comment })
+      }).then(res => {
+        if(res.ok) {
+          document.getElementById('name').value = '';
+          document.getElementById('comment').value = '';
+          loadComments();
+        }
+      });
+    }
+
+    function loadComments() {
+      fetch('/comments')
+        .then(res => res.json())
+        .then(data => {
+          const container = document.getElementById('comments');
+          container.innerHTML = data.map(c => `
+            <div class="comment">
+              <strong>${c.name}</strong><br/>
+              <span>${c.comment}</span><br/>
+              <small>${new Date(c.date).toLocaleString()}</small><br/>
+              <input type="text" placeholder="Reply..." onchange="submitReply('${c._id}', this.value)"/>
+              <div id="replies-${c._id}">
+                ${c.replies?.map(r => `<div class='reply'><strong>${r.name}</strong>: ${r.comment}<br/><small>${new Date(r.date).toLocaleString()}</small></div>`).join('') || ''}
+              </div>
+            </div>
+          `).join('');
+        });
+    }
+
+    function submitReply(parentId, value) {
+      const name = prompt("Your name?");
+      if (!name || !value) return;
+      fetch('/comments/reply', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ parentId, name, comment: value })
+      }).then(res => {
+        if(res.ok) loadComments();
+      });
+    }
+
+    loadComments();
+  </script>
+</body>
+</html>
