@@ -1,4 +1,3 @@
-
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -14,14 +13,24 @@ mongoose.connect('mongodb+srv://jikew32666:nih7jgcq1pkSSyGY@cluster0.jbdxjkc.mon
 const ReplySchema = new mongoose.Schema({
   name: String,
   comment: String,
-  date: { type: Date, default: Date.now }
+  date: { type: Date, default: Date.now },
+  reactions: {
+    like: { type: Number, default: 0 },
+    love: { type: Number, default: 0 },
+    laugh: { type: Number, default: 0 }
+  }
 });
 
 const CommentSchema = new mongoose.Schema({
   name: String,
   comment: String,
   date: { type: Date, default: Date.now },
-  replies: [ReplySchema]
+  replies: [ReplySchema],
+  reactions: {
+    like: { type: Number, default: 0 },
+    love: { type: Number, default: 0 },
+    laugh: { type: Number, default: 0 }
+  }
 });
 const Comment = mongoose.model('Comment', CommentSchema);
 
@@ -45,6 +54,30 @@ app.post('/comments/reply', async (req, res) => {
   parent.replies.push({ name, comment });
   await parent.save();
   res.status(201).json(parent);
+});
+
+app.post('/comments/react', async (req, res) => {
+  const { commentId, replyId, type } = req.body;
+  const validReactions = ['like', 'love', 'laugh'];
+  if (!validReactions.includes(type)) return res.status(400).json({ error: 'Invalid reaction' });
+
+  const comment = await Comment.findById(commentId);
+  if (!comment) return res.status(404).json({ error: 'Comment not found' });
+
+  if (replyId) {
+    // Reacting to a reply
+    const reply = comment.replies.id(replyId);
+    if (!reply) return res.status(404).json({ error: 'Reply not found' });
+    if (!reply.reactions) reply.reactions = { like: 0, love: 0, laugh: 0 };
+    reply.reactions[type] = (reply.reactions[type] || 0) + 1;
+  } else {
+    // Reacting to the main comment
+    if (!comment.reactions) comment.reactions = { like: 0, love: 0, laugh: 0 };
+    comment.reactions[type] = (comment.reactions[type] || 0) + 1;
+  }
+
+  await comment.save();
+  res.status(200).json(comment);
 });
 
 app.listen(3000, () => console.log('Server running on port 3000'));
