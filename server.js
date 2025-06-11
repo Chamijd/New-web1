@@ -11,7 +11,19 @@ app.use(express.json());
 app.use(express.static(__dirname));
 
 // Configure multer for file uploads
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ 
+  dest: 'uploads/',
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB file size limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
+});
 
 mongoose.connect('mongodb+srv://jikew32666:nih7jgcq1pkSSyGY@cluster0.jbdxjkc.mongodb.net/autoreplydb');
 
@@ -53,54 +65,66 @@ if (!fs.existsSync('uploads')) {
 }
 
 app.get('/comments', async (req, res) => {
-  const comments = await Comment.find().sort({ date: -1 });
-  res.json(comments);
+  try {
+    const comments = await Comment.find().sort({ date: -1 });
+    res.json(comments);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to load comments' });
+  }
 });
 
 app.post('/comments', upload.single('image'), async (req, res) => {
-  const { name, comment } = req.body;
-  if (!name || !comment) return res.status(400).json({ error: 'Missing fields' });
+  try {
+    const { name, comment } = req.body;
+    if (!name || !comment) return res.status(400).json({ error: 'Name and comment are required' });
 
-  let imageUrl = '';
-  if (req.file) {
-    // In a production app, you'd upload to cloud storage like S3
-    // Here we just move to a public directory
-    const newPath = `uploads/${Date.now()}_${req.file.originalname}`;
-    fs.renameSync(req.file.path, newPath);
-    imageUrl = `/${newPath}`;
+    let imageUrl = '';
+    if (req.file) {
+      const newPath = `uploads/${Date.now()}_${req.file.originalname}`;
+      fs.renameSync(req.file.path, newPath);
+      imageUrl = `/${newPath}`;
+    }
+
+    const newComment = new Comment({ name, comment, imageUrl });
+    await newComment.save();
+    res.status(201).json(newComment);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-
-  const newComment = new Comment({ name, comment, imageUrl });
-  await newComment.save();
-  res.status(201).json(newComment);
 });
 
 app.post('/comments/reply', upload.single('image'), async (req, res) => {
-  const { parentId, name, comment } = req.body;
-  const parent = await Comment.findById(parentId);
-  if (!parent) return res.status(404).json({ error: 'Comment not found' });
+  try {
+    const { parentId, name, comment } = req.body;
+    if (!parentId || !name || !comment) return res.status(400).json({ error: 'Missing required fields' });
 
-  let imageUrl = '';
-  if (req.file) {
-    const newPath = `uploads/${Date.now()}_${req.file.originalname}`;
-    fs.renameSync(req.file.path, newPath);
-    imageUrl = `/${newPath}`;
+    const parent = await Comment.findById(parentId);
+    if (!parent) return res.status(404).json({ error: 'Comment not found' });
+
+    let imageUrl = '';
+    if (req.file) {
+      const newPath = `uploads/${Date.now()}_${req.file.originalname}`;
+      fs.renameSync(req.file.path, newPath);
+      imageUrl = `/${newPath}`;
+    }
+
+    parent.replies.push({ name, comment, imageUrl });
+    await parent.save();
+    res.status(201).json(parent);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-
-  parent.replies.push({ name, comment, imageUrl });
-  await parent.save();
-  res.status(201).json(parent);
 });
 
 app.post('/comments/react', async (req, res) => {
-  const { commentId, replyId, type, userIP } = req.body;
-  const validReactions = ['like', 'love', 'laugh'];
-  if (!validReactions.includes(type)) return res.status(400).json({ error: 'Invalid reaction' });
-
-  const comment = await Comment.findById(commentId);
-  if (!comment) return res.status(404).json({ error: 'Comment not found' });
-
   try {
+    const { commentId, replyId, type, userIP } = req.body;
+    const validReactions = ['like', 'love', 'laugh'];
+    if (!validReactions.includes(type)) return res.status(400).json({ error: 'Invalid reaction type' });
+
+    const comment = await Comment.findById(commentId);
+    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+
     if (replyId) {
       const reply = comment.replies.id(replyId);
       if (!reply) return res.status(404).json({ error: 'Reply not found' });
@@ -185,4 +209,11 @@ app.post('/comments/react', async (req, res) => {
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'));
 
-app.listen(3000, () => console.log('Server running on port 3000'));
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: err.message });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
