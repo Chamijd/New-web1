@@ -71,7 +71,7 @@ app.post('/comments/react', async (req, res) => {
 });
 
 app.post('/comments/reply/react', async (req, res) => {
-  const { commentId, replyId, reactionType } = req.body;
+  const { replyId, reactionType, commentId } = req.body;
   const validReactions = ['like', 'love', 'laugh'];
   if (!validReactions.includes(reactionType)) {
     return res.status(400).json({ error: 'Invalid reaction type' });
