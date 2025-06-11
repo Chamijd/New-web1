@@ -64,6 +64,9 @@ if (!fs.existsSync('uploads')) {
   fs.mkdirSync('uploads');
 }
 
+// Password for deletion
+const DELETE_PASSWORD = 'chamindu2008';
+
 app.get('/comments', async (req, res) => {
   try {
     const comments = await Comment.find().sort({ date: -1 });
@@ -200,6 +203,69 @@ app.post('/comments/react', async (req, res) => {
 
     await comment.save();
     res.status(200).json(comment);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete comment endpoint
+app.delete('/comments/:id', async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (password !== DELETE_PASSWORD) {
+      return res.status(403).json({ error: 'Incorrect password' });
+    }
+
+    const comment = await Comment.findByIdAndDelete(req.params.id);
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    // Delete associated image if exists
+    if (comment.imageUrl) {
+      const imagePath = path.join(__dirname, comment.imageUrl);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+
+    res.status(200).json({ message: 'Comment deleted successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete reply endpoint
+app.delete('/comments/:commentId/replies/:replyId', async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (password !== DELETE_PASSWORD) {
+      return res.status(403).json({ error: 'Incorrect password' });
+    }
+
+    const comment = await Comment.findById(req.params.commentId);
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    const reply = comment.replies.id(req.params.replyId);
+    if (!reply) {
+      return res.status(404).json({ error: 'Reply not found' });
+    }
+
+    // Delete associated image if exists
+    if (reply.imageUrl) {
+      const imagePath = path.join(__dirname, reply.imageUrl);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+
+    reply.remove();
+    await comment.save();
+    res.status(200).json({ message: 'Reply deleted successfully' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal server error' });
