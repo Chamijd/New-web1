@@ -11,6 +11,7 @@
       --text-dark: #ffffff;
       --text-light: #000000;
       --highlight: #ffdd57;
+      --danger: #ff3860;
     }
     body {
       background: var(--bg-dark);
@@ -52,6 +53,7 @@
       max-width: 600px;
       text-align: left;
       box-shadow: 0 0 10px rgba(255,255,255,0.2);
+      position: relative;
     }
     .comment strong {
       color: var(--highlight);
@@ -92,6 +94,14 @@
       padding: 5px 10px;
       font-size: 12px;
       color: var(--highlight);
+    }
+    .delete-btn {
+      background: none;
+      border: 1px solid var(--danger);
+      padding: 5px 10px;
+      font-size: 12px;
+      color: var(--danger);
+      margin-left: 10px;
     }
     .reactions {
       display: flex;
@@ -199,6 +209,38 @@
       font-size: 30px;
       cursor: pointer;
     }
+    .password-modal {
+      display: none;
+      position: fixed;
+      z-index: 100;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.7);
+      align-items: center;
+      justify-content: center;
+    }
+    .password-modal-content {
+      background: var(--bg-dark);
+      padding: 20px;
+      border-radius: 10px;
+      width: 300px;
+      text-align: center;
+    }
+    .password-modal input {
+      width: 100%;
+      margin: 10px 0;
+    }
+    .password-modal button {
+      width: 100%;
+    }
+    .error-message {
+      color: var(--danger);
+      font-size: 14px;
+      margin-top: 5px;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -222,9 +264,20 @@
     <img class="modal-image" id="modal-image"/>
   </div>
 
+  <div class="password-modal" id="password-modal">
+    <div class="password-modal-content">
+      <h3>Enter Password</h3>
+      <input type="password" id="delete-password" placeholder="Password"/>
+      <div class="error-message" id="password-error">Incorrect password!</div>
+      <button onclick="confirmDelete()">Confirm</button>
+      <button onclick="closePasswordModal()" style="background: #666; margin-top: 10px;">Cancel</button>
+    </div>
+  </div>
+
   <script>
     let userIP = '';
     let selectedImage = null;
+    let currentDeleteAction = null;
     
     // Get user IP address
     fetch('https://api.ipify.org?format=json')
@@ -296,6 +349,7 @@
               
               <div class="actions">
                 <button class="reply-btn" onclick="toggleReplyForm('${c._id}')">Reply</button>
+                <button class="delete-btn" onclick="showPasswordModal('comment', '${c._id}')">Delete</button>
                 <div class="reactions">
                   <div class="reaction ${c.reactions?.likeUsers?.includes(userIP) ? 'active' : ''}" 
                        onclick="addReaction('${c._id}', null, 'like')">
@@ -332,21 +386,24 @@
                     <strong>${r.name}</strong>: ${r.comment}<br/>
                     ${r.imageUrl ? `<img src="${r.imageUrl}" class="comment-image" onclick="openModal('${r.imageUrl}')"/>` : ''}
                     <small>${new Date(r.date).toLocaleString()}</small>
-                    <div class="reactions">
-                      <div class="reaction ${r.reactions?.likeUsers?.includes(userIP) ? 'active' : ''}" 
-                           onclick="addReaction('${c._id}', '${r._id}', 'like')">
-                        👍<span class="reaction-count">${r.reactions?.like || 0}</span>
-                        ${r.reactions?.likeUsers?.includes(userIP) ? '<span class="user-reacted">✓</span>' : ''}
-                      </div>
-                      <div class="reaction ${r.reactions?.loveUsers?.includes(userIP) ? 'active' : ''}" 
-                           onclick="addReaction('${c._id}', '${r._id}', 'love')">
-                        ❤️<span class="reaction-count">${r.reactions?.love || 0}</span>
-                        ${r.reactions?.loveUsers?.includes(userIP) ? '<span class="user-reacted">✓</span>' : ''}
-                      </div>
-                      <div class="reaction ${r.reactions?.laughUsers?.includes(userIP) ? 'active' : ''}" 
-                           onclick="addReaction('${c._id}', '${r._id}', 'laugh')">
-                        😂<span class="reaction-count">${r.reactions?.laugh || 0}</span>
-                        ${r.reactions?.laughUsers?.includes(userIP) ? '<span class="user-reacted">✓</span>' : ''}
+                    <div class="actions">
+                      <button class="delete-btn" onclick="showPasswordModal('reply', '${c._id}', '${r._id}')">Delete</button>
+                      <div class="reactions">
+                        <div class="reaction ${r.reactions?.likeUsers?.includes(userIP) ? 'active' : ''}" 
+                             onclick="addReaction('${c._id}', '${r._id}', 'like')">
+                          👍<span class="reaction-count">${r.reactions?.like || 0}</span>
+                          ${r.reactions?.likeUsers?.includes(userIP) ? '<span class="user-reacted">✓</span>' : ''}
+                        </div>
+                        <div class="reaction ${r.reactions?.loveUsers?.includes(userIP) ? 'active' : ''}" 
+                             onclick="addReaction('${c._id}', '${r._id}', 'love')">
+                          ❤️<span class="reaction-count">${r.reactions?.love || 0}</span>
+                          ${r.reactions?.loveUsers?.includes(userIP) ? '<span class="user-reacted">✓</span>' : ''}
+                        </div>
+                        <div class="reaction ${r.reactions?.laughUsers?.includes(userIP) ? 'active' : ''}" 
+                             onclick="addReaction('${c._id}', '${r._id}', 'laugh')">
+                          😂<span class="reaction-count">${r.reactions?.laugh || 0}</span>
+                          ${r.reactions?.laughUsers?.includes(userIP) ? '<span class="user-reacted">✓</span>' : ''}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -430,11 +487,76 @@
       document.getElementById('image-modal').style.display = 'none';
     }
 
+    function showPasswordModal(type, commentId, replyId = null) {
+      currentDeleteAction = { type, commentId, replyId };
+      document.getElementById('password-modal').style.display = 'flex';
+      document.getElementById('delete-password').value = '';
+      document.getElementById('password-error').style.display = 'none';
+    }
+
+    function closePasswordModal() {
+      document.getElementById('password-modal').style.display = 'none';
+      currentDeleteAction = null;
+    }
+
+    function confirmDelete() {
+      const password = document.getElementById('delete-password').value;
+      const errorElement = document.getElementById('password-error');
+      
+      if (!currentDeleteAction) {
+        errorElement.textContent = 'No delete action specified';
+        errorElement.style.display = 'block';
+        return;
+      }
+
+      const { type, commentId, replyId } = currentDeleteAction;
+      let url, body;
+
+      if (type === 'comment') {
+        url = `/comments/${commentId}`;
+      } else if (type === 'reply') {
+        url = `/comments/${commentId}/replies/${replyId}`;
+      } else {
+        errorElement.textContent = 'Invalid delete type';
+        errorElement.style.display = 'block';
+        return;
+      }
+
+      fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password })
+      })
+      .then(response => {
+        if (!response.ok) {
+          return response.json().then(err => {
+            throw new Error(err.error || 'Failed to delete');
+          });
+        }
+        return response.json();
+      })
+      .then(() => {
+        closePasswordModal();
+        loadComments();
+      })
+      .catch(error => {
+        errorElement.textContent = error.message;
+        errorElement.style.display = 'block';
+      });
+    }
+
     // Close modal when clicking outside image
     window.onclick = function(event) {
       const modal = document.getElementById('image-modal');
       if (event.target == modal) {
         closeModal();
+      }
+      
+      const passwordModal = document.getElementById('password-modal');
+      if (event.target == passwordModal) {
+        closePasswordModal();
       }
     }
 
