@@ -2,11 +2,16 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
+const multer = require('multer');
+const fs = require('fs');
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
+
+// Configure multer for file uploads
+const upload = multer({ dest: 'uploads/' });
 
 mongoose.connect('mongodb+srv://jikew32666:nih7jgcq1pkSSyGY@cluster0.jbdxjkc.mongodb.net/autoreplydb');
 
@@ -14,6 +19,7 @@ const ReplySchema = new mongoose.Schema({
   name: String,
   comment: String,
   date: { type: Date, default: Date.now },
+  imageUrl: String,
   reactions: {
     like: { type: Number, default: 0 },
     love: { type: Number, default: 0 },
@@ -28,6 +34,7 @@ const CommentSchema = new mongoose.Schema({
   name: String,
   comment: String,
   date: { type: Date, default: Date.now },
+  imageUrl: String,
   replies: [ReplySchema],
   reactions: {
     like: { type: Number, default: 0 },
@@ -40,24 +47,47 @@ const CommentSchema = new mongoose.Schema({
 });
 const Comment = mongoose.model('Comment', CommentSchema);
 
+// Ensure uploads directory exists
+if (!fs.existsSync('uploads')) {
+  fs.mkdirSync('uploads');
+}
+
 app.get('/comments', async (req, res) => {
   const comments = await Comment.find().sort({ date: -1 });
   res.json(comments);
 });
 
-app.post('/comments', async (req, res) => {
+app.post('/comments', upload.single('image'), async (req, res) => {
   const { name, comment } = req.body;
   if (!name || !comment) return res.status(400).json({ error: 'Missing fields' });
-  const newComment = new Comment({ name, comment });
+
+  let imageUrl = '';
+  if (req.file) {
+    // In a production app, you'd upload to cloud storage like S3
+    // Here we just move to a public directory
+    const newPath = `uploads/${Date.now()}_${req.file.originalname}`;
+    fs.renameSync(req.file.path, newPath);
+    imageUrl = `/${newPath}`;
+  }
+
+  const newComment = new Comment({ name, comment, imageUrl });
   await newComment.save();
   res.status(201).json(newComment);
 });
 
-app.post('/comments/reply', async (req, res) => {
+app.post('/comments/reply', upload.single('image'), async (req, res) => {
   const { parentId, name, comment } = req.body;
   const parent = await Comment.findById(parentId);
   if (!parent) return res.status(404).json({ error: 'Comment not found' });
-  parent.replies.push({ name, comment });
+
+  let imageUrl = '';
+  if (req.file) {
+    const newPath = `uploads/${Date.now()}_${req.file.originalname}`;
+    fs.renameSync(req.file.path, newPath);
+    imageUrl = `/${newPath}`;
+  }
+
+  parent.replies.push({ name, comment, imageUrl });
   await parent.save();
   res.status(201).json(parent);
 });
@@ -72,11 +102,9 @@ app.post('/comments/react', async (req, res) => {
 
   try {
     if (replyId) {
-      // Reacting to a reply
       const reply = comment.replies.id(replyId);
       if (!reply) return res.status(404).json({ error: 'Reply not found' });
       
-      // Initialize if not exists
       if (!reply.reactions) {
         reply.reactions = { 
           like: 0, love: 0, laugh: 0,
@@ -84,7 +112,6 @@ app.post('/comments/react', async (req, res) => {
         };
       }
       
-      // Check if user already reacted with any type
       const allUserReactions = [
         ...reply.reactions.likeUsers,
         ...reply.reactions.loveUsers,
@@ -92,18 +119,15 @@ app.post('/comments/react', async (req, res) => {
       ];
       
       if (allUserReactions.includes(userIP)) {
-        // User already reacted, check if same type
         const userReactionType = 
           reply.reactions.likeUsers.includes(userIP) ? 'like' :
           reply.reactions.loveUsers.includes(userIP) ? 'love' :
           'laugh';
         
         if (userReactionType === type) {
-          // Remove reaction
           reply.reactions[type]--;
           reply.reactions[`${type}Users`] = reply.reactions[`${type}Users`].filter(ip => ip !== userIP);
         } else {
-          // Change reaction type
           reply.reactions[userReactionType]--;
           reply.reactions[`${userReactionType}Users`] = reply.reactions[`${userReactionType}Users`].filter(ip => ip !== userIP);
           
@@ -111,12 +135,10 @@ app.post('/comments/react', async (req, res) => {
           reply.reactions[`${type}Users`].push(userIP);
         }
       } else {
-        // New reaction
         reply.reactions[type]++;
         reply.reactions[`${type}Users`].push(userIP);
       }
     } else {
-      // Reacting to the main comment
       if (!comment.reactions) {
         comment.reactions = { 
           like: 0, love: 0, laugh: 0,
@@ -124,7 +146,6 @@ app.post('/comments/react', async (req, res) => {
         };
       }
       
-      // Check if user already reacted with any type
       const allUserReactions = [
         ...comment.reactions.likeUsers,
         ...comment.reactions.loveUsers,
@@ -132,18 +153,15 @@ app.post('/comments/react', async (req, res) => {
       ];
       
       if (allUserReactions.includes(userIP)) {
-        // User already reacted, check if same type
         const userReactionType = 
           comment.reactions.likeUsers.includes(userIP) ? 'like' :
           comment.reactions.loveUsers.includes(userIP) ? 'love' :
           'laugh';
         
         if (userReactionType === type) {
-          // Remove reaction
           comment.reactions[type]--;
           comment.reactions[`${type}Users`] = comment.reactions[`${type}Users`].filter(ip => ip !== userIP);
         } else {
-          // Change reaction type
           comment.reactions[userReactionType]--;
           comment.reactions[`${userReactionType}Users`] = comment.reactions[`${userReactionType}Users`].filter(ip => ip !== userIP);
           
@@ -151,7 +169,6 @@ app.post('/comments/react', async (req, res) => {
           comment.reactions[`${type}Users`].push(userIP);
         }
       } else {
-        // New reaction
         comment.reactions[type]++;
         comment.reactions[`${type}Users`].push(userIP);
       }
@@ -164,5 +181,8 @@ app.post('/comments/react', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Serve uploaded files
+app.use('/uploads', express.static('uploads'));
 
 app.listen(3000, () => console.log('Server running on port 3000'));
