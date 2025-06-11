@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Comment System</title>
+  <title>Comment System with Images</title>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
@@ -208,7 +208,7 @@
   <textarea id="comment" placeholder="Your Comment 😊"></textarea><br/>
   
   <div class="file-upload">
-    <label for="image-upload" class="file-upload-label">📷 Upload Image</label>
+    <label for="image-upload" class="file-upload-label">📷 Upload Image (Optional)</label>
     <input type="file" id="image-upload" accept="image/*"/>
     <img id="image-preview" class="image-preview"/>
   </div>
@@ -258,7 +258,7 @@
     function submitComment() {
       const name = document.getElementById('name').value.trim();
       const comment = document.getElementById('comment').value.trim();
-      if (!name || !comment) return alert("Fill out both fields!");
+      if (!name || !comment) return alert("Name and comment are required!");
 
       const formData = new FormData();
       formData.append('name', name);
@@ -319,7 +319,7 @@
                 <input type="text" id="reply-name-${c._id}" placeholder="Your Name"/>
                 <textarea id="reply-comment-${c._id}" placeholder="Your Reply"></textarea>
                 <div class="file-upload">
-                  <label for="reply-image-${c._id}" class="file-upload-label">📷 Upload Image</label>
+                  <label for="reply-image-${c._id}" class="file-upload-label">📷 Upload Image (Optional)</label>
                   <input type="file" id="reply-image-${c._id}" class="reply-image-upload" accept="image/*"/>
                   <img id="reply-image-preview-${c._id}" class="image-preview"/>
                 </div>
@@ -383,7 +383,7 @@
     function submitReply(commentId) {
       const name = document.getElementById(`reply-name-${commentId}`).value.trim();
       const comment = document.getElementById(`reply-comment-${commentId}`).value.trim();
-      if (!name || !comment) return alert("Fill out both fields!");
+      if (!name || !comment) return alert("Name and reply are required!");
 
       const imageInput = document.getElementById(`reply-image-${commentId}`);
       const formData = new FormData();
