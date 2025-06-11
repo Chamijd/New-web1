@@ -17,7 +17,10 @@ const ReplySchema = new mongoose.Schema({
   reactions: {
     like: { type: Number, default: 0 },
     love: { type: Number, default: 0 },
-    laugh: { type: Number, default: 0 }
+    laugh: { type: Number, default: 0 },
+    likeUsers: { type: [String], default: [] },
+    loveUsers: { type: [String], default: [] },
+    laughUsers: { type: [String], default: [] }
   }
 });
 
@@ -29,7 +32,10 @@ const CommentSchema = new mongoose.Schema({
   reactions: {
     like: { type: Number, default: 0 },
     love: { type: Number, default: 0 },
-    laugh: { type: Number, default: 0 }
+    laugh: { type: Number, default: 0 },
+    likeUsers: { type: [String], default: [] },
+    loveUsers: { type: [String], default: [] },
+    laughUsers: { type: [String], default: [] }
   }
 });
 const Comment = mongoose.model('Comment', CommentSchema);
@@ -57,27 +63,106 @@ app.post('/comments/reply', async (req, res) => {
 });
 
 app.post('/comments/react', async (req, res) => {
-  const { commentId, replyId, type } = req.body;
+  const { commentId, replyId, type, userIP } = req.body;
   const validReactions = ['like', 'love', 'laugh'];
   if (!validReactions.includes(type)) return res.status(400).json({ error: 'Invalid reaction' });
 
   const comment = await Comment.findById(commentId);
   if (!comment) return res.status(404).json({ error: 'Comment not found' });
 
-  if (replyId) {
-    // Reacting to a reply
-    const reply = comment.replies.id(replyId);
-    if (!reply) return res.status(404).json({ error: 'Reply not found' });
-    if (!reply.reactions) reply.reactions = { like: 0, love: 0, laugh: 0 };
-    reply.reactions[type] = (reply.reactions[type] || 0) + 1;
-  } else {
-    // Reacting to the main comment
-    if (!comment.reactions) comment.reactions = { like: 0, love: 0, laugh: 0 };
-    comment.reactions[type] = (comment.reactions[type] || 0) + 1;
-  }
+  try {
+    if (replyId) {
+      // Reacting to a reply
+      const reply = comment.replies.id(replyId);
+      if (!reply) return res.status(404).json({ error: 'Reply not found' });
+      
+      // Initialize if not exists
+      if (!reply.reactions) {
+        reply.reactions = { 
+          like: 0, love: 0, laugh: 0,
+          likeUsers: [], loveUsers: [], laughUsers: []
+        };
+      }
+      
+      // Check if user already reacted with any type
+      const allUserReactions = [
+        ...reply.reactions.likeUsers,
+        ...reply.reactions.loveUsers,
+        ...reply.reactions.laughUsers
+      ];
+      
+      if (allUserReactions.includes(userIP)) {
+        // User already reacted, check if same type
+        const userReactionType = 
+          reply.reactions.likeUsers.includes(userIP) ? 'like' :
+          reply.reactions.loveUsers.includes(userIP) ? 'love' :
+          'laugh';
+        
+        if (userReactionType === type) {
+          // Remove reaction
+          reply.reactions[type]--;
+          reply.reactions[`${type}Users`] = reply.reactions[`${type}Users`].filter(ip => ip !== userIP);
+        } else {
+          // Change reaction type
+          reply.reactions[userReactionType]--;
+          reply.reactions[`${userReactionType}Users`] = reply.reactions[`${userReactionType}Users`].filter(ip => ip !== userIP);
+          
+          reply.reactions[type]++;
+          reply.reactions[`${type}Users`].push(userIP);
+        }
+      } else {
+        // New reaction
+        reply.reactions[type]++;
+        reply.reactions[`${type}Users`].push(userIP);
+      }
+    } else {
+      // Reacting to the main comment
+      if (!comment.reactions) {
+        comment.reactions = { 
+          like: 0, love: 0, laugh: 0,
+          likeUsers: [], loveUsers: [], laughUsers: []
+        };
+      }
+      
+      // Check if user already reacted with any type
+      const allUserReactions = [
+        ...comment.reactions.likeUsers,
+        ...comment.reactions.loveUsers,
+        ...comment.reactions.laughUsers
+      ];
+      
+      if (allUserReactions.includes(userIP)) {
+        // User already reacted, check if same type
+        const userReactionType = 
+          comment.reactions.likeUsers.includes(userIP) ? 'like' :
+          comment.reactions.loveUsers.includes(userIP) ? 'love' :
+          'laugh';
+        
+        if (userReactionType === type) {
+          // Remove reaction
+          comment.reactions[type]--;
+          comment.reactions[`${type}Users`] = comment.reactions[`${type}Users`].filter(ip => ip !== userIP);
+        } else {
+          // Change reaction type
+          comment.reactions[userReactionType]--;
+          comment.reactions[`${userReactionType}Users`] = comment.reactions[`${userReactionType}Users`].filter(ip => ip !== userIP);
+          
+          comment.reactions[type]++;
+          comment.reactions[`${type}Users`].push(userIP);
+        }
+      } else {
+        // New reaction
+        comment.reactions[type]++;
+        comment.reactions[`${type}Users`].push(userIP);
+      }
+    }
 
-  await comment.save();
-  res.status(200).json(comment);
+    await comment.save();
+    res.status(200).json(comment);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.listen(3000, () => console.log('Server running on port 3000'));
