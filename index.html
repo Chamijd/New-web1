@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -12,6 +11,8 @@
       --text-dark: #ffffff;
       --text-light: #000000;
       --highlight: #ffdd57;
+      --primary: #9b00ff;
+      --secondary: #ff0076;
     }
     body {
       background: var(--bg-dark);
@@ -35,7 +36,7 @@
       font-size: 16px;
     }
     button {
-      background: linear-gradient(to right,#9b00ff,#ff0076);
+      background: linear-gradient(to right, var(--primary), var(--secondary));
       color: white;
       padding: 12px 24px;
       border: none;
@@ -43,12 +44,16 @@
       font-weight: bold;
       cursor: pointer;
       font-size: 16px;
+      transition: transform 0.2s;
+    }
+    button:hover {
+      transform: scale(1.05);
     }
     .comment {
       background-color: rgba(255,255,255,0.1);
       padding: 15px;
       border-radius: 12px;
-      margin: 10px auto;
+      margin: 20px auto;
       max-width: 600px;
       text-align: left;
       box-shadow: 0 0 10px rgba(255,255,255,0.2);
@@ -69,6 +74,7 @@
       padding-left: 20px;
       font-size: 14px;
       color: #f1f1f1;
+      border-left: 2px solid var(--secondary);
     }
     .reply small {
       font-size: 11px;
@@ -76,9 +82,45 @@
     }
     .theme-toggle {
       position: absolute;
-      top: 10px;
-      right: 10px;
+      top: 20px;
+      right: 20px;
       cursor: pointer;
+      font-size: 24px;
+    }
+    .reply-input {
+      display: flex;
+      margin-top: 10px;
+    }
+    .reply-input input {
+      flex: 1;
+      margin-right: 10px;
+      border-radius: 20px;
+      padding: 8px 15px;
+    }
+    .reply-btn {
+      padding: 8px 15px;
+      font-size: 14px;
+      border-radius: 20px;
+    }
+    .reactions {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .reaction-btn {
+      background: rgba(255,255,255,0.1);
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .reaction-btn:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    .reaction-btn.active {
+      background: var(--secondary);
     }
   </style>
 </head>
@@ -94,6 +136,12 @@
   <script>
     function toggleTheme() {
       document.body.classList.toggle('light');
+      localStorage.setItem('theme', document.body.classList.contains('light') ? 'light' : 'dark');
+    }
+
+    // Load saved theme
+    if (localStorage.getItem('theme') === 'light') {
+      document.body.classList.add('light');
     }
 
     function submitComment() {
@@ -120,26 +168,66 @@
         .then(data => {
           const container = document.getElementById('comments');
           container.innerHTML = data.map(c => `
-            <div class="comment">
+            <div class="comment" data-id="${c._id}">
               <strong>${c.name}</strong><br/>
               <span>${c.comment}</span><br/>
-              <small>${new Date(c.date).toLocaleString()}</small><br/>
-              <input type="text" placeholder="Reply..." onchange="submitReply('${c._id}', this.value)"/>
+              <small>${new Date(c.date).toLocaleString()}</small>
+              
+              <div class="reactions">
+                <button class="reaction-btn" onclick="addReaction('${c._id}', 'like')">
+                  👍 ${c.reactions?.like || 0}
+                </button>
+                <button class="reaction-btn" onclick="addReaction('${c._id}', 'love')">
+                  ❤️ ${c.reactions?.love || 0}
+                </button>
+                <button class="reaction-btn" onclick="addReaction('${c._id}', 'laugh')">
+                  😂 ${c.reactions?.laugh || 0}
+                </button>
+              </div>
+              
+              <div class="reply-input">
+                <input type="text" id="reply-${c._id}" placeholder="Write a reply..."/>
+                <button class="reply-btn" onclick="submitReply('${c._id}')">Reply</button>
+              </div>
+              
               <div id="replies-${c._id}">
-                ${c.replies?.map(r => `<div class='reply'><strong>${r.name}</strong>: ${r.comment}<br/><small>${new Date(r.date).toLocaleString()}</small></div>`).join('') || ''}
+                ${c.replies?.map(r => `
+                  <div class='reply'>
+                    <strong>${r.name}</strong>: ${r.comment}<br/>
+                    <small>${new Date(r.date).toLocaleString()}</small>
+                  </div>
+                `).join('') || ''}
               </div>
             </div>
           `).join('');
         });
     }
 
-    function submitReply(parentId, value) {
+    function submitReply(parentId) {
+      const replyInput = document.getElementById(`reply-${parentId}`);
+      const comment = replyInput.value.trim();
+      if (!comment) return;
+      
       const name = prompt("Your name?");
-      if (!name || !value) return;
+      if (!name) return;
+      
       fetch('/comments/reply', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ parentId, name, comment: value })
+        body: JSON.stringify({ parentId, name, comment })
+      }).then(res => {
+        if(res.ok) {
+          replyInput.value = '';
+          loadComments();
+        }
+      });
+    }
+
+    function addReaction(commentId, reactionType) {
+      fetch('/comments/react', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ commentId, reactionType })
       }).then(res => {
         if(res.ok) loadComments();
       });
