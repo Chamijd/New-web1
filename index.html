@@ -49,7 +49,7 @@
     button:hover {
       transform: scale(1.05);
     }
-    .comment, .reply {
+    .comment {
       background-color: rgba(255,255,255,0.1);
       padding: 15px;
       border-radius: 12px;
@@ -59,8 +59,11 @@
       box-shadow: 0 0 10px rgba(255,255,255,0.2);
     }
     .reply {
-      margin-left: 30px;
-      background-color: rgba(255,255,255,0.05);
+      margin-top: 10px;
+      padding-left: 20px;
+      font-size: 14px;
+      color: #f1f1f1;
+      border-left: 2px solid var(--secondary);
     }
     .comment strong, .reply strong {
       color: var(--highlight);
@@ -79,8 +82,6 @@
       right: 20px;
       cursor: pointer;
       font-size: 24px;
-      background: none;
-      border: none;
     }
     .reply-input {
       display: flex;
@@ -137,7 +138,6 @@
       localStorage.setItem('theme', document.body.classList.contains('light') ? 'light' : 'dark');
     }
 
-    // Load saved theme
     if (localStorage.getItem('theme') === 'light') {
       document.body.classList.add('light');
     }
@@ -172,13 +172,13 @@
               <small>${new Date(c.date).toLocaleString()}</small>
               
               <div class="reactions">
-                <button class="reaction-btn" onclick="addReaction('${c._id}', 'like')">
+                <button class="reaction-btn" onclick="addReaction('${c._id}', 'like', 'comment')">
                   👍 ${c.reactions?.like || 0}
                 </button>
-                <button class="reaction-btn" onclick="addReaction('${c._id}', 'love')">
+                <button class="reaction-btn" onclick="addReaction('${c._id}', 'love', 'comment')">
                   ❤️ ${c.reactions?.love || 0}
                 </button>
-                <button class="reaction-btn" onclick="addReaction('${c._id}', 'laugh')">
+                <button class="reaction-btn" onclick="addReaction('${c._id}', 'laugh', 'comment')">
                   😂 ${c.reactions?.laugh || 0}
                 </button>
               </div>
@@ -194,13 +194,13 @@
                     <strong>${r.name}</strong>: ${r.comment}<br/>
                     <small>${new Date(r.date).toLocaleString()}</small>
                     <div class="reactions">
-                      <button class="reaction-btn" onclick="addReplyReaction('${c._id}', '${r._id}', 'like')">
+                      <button class="reaction-btn" onclick="addReaction('${r._id}', 'like', 'reply', '${c._id}')">
                         👍 ${r.reactions?.like || 0}
                       </button>
-                      <button class="reaction-btn" onclick="addReplyReaction('${c._id}', '${r._id}', 'love')">
+                      <button class="reaction-btn" onclick="addReaction('${r._id}', 'love', 'reply', '${c._id}')">
                         ❤️ ${r.reactions?.love || 0}
                       </button>
-                      <button class="reaction-btn" onclick="addReplyReaction('${c._id}', '${r._id}', 'laugh')">
+                      <button class="reaction-btn" onclick="addReaction('${r._id}', 'laugh', 'reply', '${c._id}')">
                         😂 ${r.reactions?.laugh || 0}
                       </button>
                     </div>
@@ -232,47 +232,19 @@
       });
     }
 
-    function addReaction(commentId, reactionType) {
-      fetch('/comments/react', {
+    function addReaction(id, reactionType, type, parentId = null) {
+      const endpoint = type === 'comment' ? '/comments/react' : '/comments/reply/react';
+      const body = type === 'comment' 
+        ? { commentId: id, reactionType } 
+        : { replyId: id, reactionType, commentId: parentId };
+
+      fetch(endpoint, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ commentId, reactionType })
-      })
-      .then(res => res.json())
-      .then(updatedComment => {
-        const commentDiv = document.querySelector(`.comment[data-id="${commentId}"]`);
-        if (commentDiv) {
-          updateReactionButtons(commentDiv, updatedComment.reactions);
-        }
-      })
-      .catch(err => console.error('Error:', err));
-    }
-
-    function addReplyReaction(commentId, replyId, reactionType) {
-      fetch('/comments/reply/react', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ commentId, replyId, reactionType })
-      })
-      .then(res => res.json())
-      .then(updatedComment => {
-        const replyDiv = document.querySelector(`.reply[data-id="${replyId}"]`);
-        if (replyDiv) {
-          const reply = updatedComment.replies.find(r => r._id === replyId);
-          updateReactionButtons(replyDiv, reply.reactions);
-        }
-      })
-      .catch(err => console.error('Error:', err));
-    }
-
-    function updateReactionButtons(container, reactions) {
-      const likeBtn = container.querySelector(`.reaction-btn:nth-child(1)`);
-      const loveBtn = container.querySelector(`.reaction-btn:nth-child(2)`);
-      const laughBtn = container.querySelector(`.reaction-btn:nth-child(3)`);
-      
-      likeBtn.innerHTML = `👍 ${reactions.like || 0}`;
-      loveBtn.innerHTML = `❤️ ${reactions.love || 0}`;
-      laughBtn.innerHTML = `😂 ${reactions.laugh || 0}`;
+        body: JSON.stringify(body)
+      }).then(res => {
+        if(res.ok) loadComments();
+      });
     }
 
     loadComments();
