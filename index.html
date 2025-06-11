@@ -49,7 +49,7 @@
     button:hover {
       transform: scale(1.05);
     }
-    .comment {
+    .comment, .reply {
       background-color: rgba(255,255,255,0.1);
       padding: 15px;
       border-radius: 12px;
@@ -58,27 +58,20 @@
       text-align: left;
       box-shadow: 0 0 10px rgba(255,255,255,0.2);
     }
-    .comment strong {
+    .reply {
+      margin-left: 30px;
+      background-color: rgba(255,255,255,0.05);
+    }
+    .comment strong, .reply strong {
       color: var(--highlight);
       font-size: 18px;
     }
-    .comment small {
+    .comment small, .reply small {
       color: #ccc;
       font-size: 12px;
     }
     #comments {
       margin-top: 30px;
-    }
-    .reply {
-      margin-top: 10px;
-      padding-left: 20px;
-      font-size: 14px;
-      color: #f1f1f1;
-      border-left: 2px solid var(--secondary);
-    }
-    .reply small {
-      font-size: 11px;
-      color: #ccc;
     }
     .theme-toggle {
       position: absolute;
@@ -86,6 +79,8 @@
       right: 20px;
       cursor: pointer;
       font-size: 24px;
+      background: none;
+      border: none;
     }
     .reply-input {
       display: flex;
@@ -115,6 +110,9 @@
       display: flex;
       align-items: center;
       gap: 5px;
+      cursor: pointer;
+      border: none;
+      color: inherit;
     }
     .reaction-btn:hover {
       background: rgba(255,255,255,0.2);
@@ -192,9 +190,20 @@
               
               <div id="replies-${c._id}">
                 ${c.replies?.map(r => `
-                  <div class='reply'>
+                  <div class="reply" data-id="${r._id}">
                     <strong>${r.name}</strong>: ${r.comment}<br/>
                     <small>${new Date(r.date).toLocaleString()}</small>
+                    <div class="reactions">
+                      <button class="reaction-btn" onclick="addReplyReaction('${c._id}', '${r._id}', 'like')">
+                        👍 ${r.reactions?.like || 0}
+                      </button>
+                      <button class="reaction-btn" onclick="addReplyReaction('${c._id}', '${r._id}', 'love')">
+                        ❤️ ${r.reactions?.love || 0}
+                      </button>
+                      <button class="reaction-btn" onclick="addReplyReaction('${c._id}', '${r._id}', 'laugh')">
+                        😂 ${r.reactions?.laugh || 0}
+                      </button>
+                    </div>
                   </div>
                 `).join('') || ''}
               </div>
@@ -228,9 +237,42 @@
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ commentId, reactionType })
-      }).then(res => {
-        if(res.ok) loadComments();
-      });
+      })
+      .then(res => res.json())
+      .then(updatedComment => {
+        const commentDiv = document.querySelector(`.comment[data-id="${commentId}"]`);
+        if (commentDiv) {
+          updateReactionButtons(commentDiv, updatedComment.reactions);
+        }
+      })
+      .catch(err => console.error('Error:', err));
+    }
+
+    function addReplyReaction(commentId, replyId, reactionType) {
+      fetch('/comments/reply/react', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ commentId, replyId, reactionType })
+      })
+      .then(res => res.json())
+      .then(updatedComment => {
+        const replyDiv = document.querySelector(`.reply[data-id="${replyId}"]`);
+        if (replyDiv) {
+          const reply = updatedComment.replies.find(r => r._id === replyId);
+          updateReactionButtons(replyDiv, reply.reactions);
+        }
+      })
+      .catch(err => console.error('Error:', err));
+    }
+
+    function updateReactionButtons(container, reactions) {
+      const likeBtn = container.querySelector(`.reaction-btn:nth-child(1)`);
+      const loveBtn = container.querySelector(`.reaction-btn:nth-child(2)`);
+      const laughBtn = container.querySelector(`.reaction-btn:nth-child(3)`);
+      
+      likeBtn.innerHTML = `👍 ${reactions.like || 0}`;
+      loveBtn.innerHTML = `❤️ ${reactions.love || 0}`;
+      laughBtn.innerHTML = `😂 ${reactions.laugh || 0}`;
     }
 
     loadComments();
