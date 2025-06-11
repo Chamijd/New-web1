@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Comment System</title>
+  <title>Comment System with Images</title>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
@@ -142,6 +142,63 @@
       align-items: center;
       justify-content: center;
     }
+    .comment-image {
+      max-width: 100%;
+      max-height: 300px;
+      border-radius: 8px;
+      margin-top: 10px;
+      cursor: pointer;
+      transition: transform 0.3s;
+    }
+    .comment-image:hover {
+      transform: scale(1.02);
+    }
+    .image-preview {
+      max-width: 100px;
+      max-height: 100px;
+      margin-right: 10px;
+      border-radius: 5px;
+      display: none;
+    }
+    .file-upload {
+      display: flex;
+      align-items: center;
+      margin: 10px 0;
+    }
+    .file-upload-label {
+      background: rgba(255,255,255,0.1);
+      padding: 8px 15px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-block;
+    }
+    #image-upload {
+      display: none;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 100;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.9);
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-image {
+      max-width: 90%;
+      max-height: 90%;
+    }
+    .close-modal {
+      position: absolute;
+      top: 20px;
+      right: 30px;
+      color: white;
+      font-size: 30px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -149,12 +206,25 @@
   <h2>💬 Leave a Comment</h2>
   <input type="text" id="name" placeholder="Your Name"/><br/>
   <textarea id="comment" placeholder="Your Comment 😊"></textarea><br/>
+  
+  <div class="file-upload">
+    <label for="image-upload" class="file-upload-label">📷 Upload Image</label>
+    <input type="file" id="image-upload" accept="image/*"/>
+    <img id="image-preview" class="image-preview"/>
+  </div>
+  
   <button onclick="submitComment()">Post Comment</button>
 
   <div id="comments"></div>
 
+  <div class="modal" id="image-modal">
+    <span class="close-modal" onclick="closeModal()">&times;</span>
+    <img class="modal-image" id="modal-image"/>
+  </div>
+
   <script>
     let userIP = '';
+    let selectedImage = null;
     
     // Get user IP address
     fetch('https://api.ipify.org?format=json')
@@ -166,6 +236,21 @@
         userIP = 'local-' + Math.random().toString(36).substr(2, 9);
       });
 
+    // Image upload handling
+    document.getElementById('image-upload').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        selectedImage = file;
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          const preview = document.getElementById('image-preview');
+          preview.src = event.target.result;
+          preview.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
     function toggleTheme() {
       document.body.classList.toggle('light');
     }
@@ -175,14 +260,23 @@
       const comment = document.getElementById('comment').value.trim();
       if (!name || !comment) return alert("Fill out both fields!");
 
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('comment', comment);
+      if (selectedImage) {
+        formData.append('image', selectedImage);
+      }
+
       fetch('/comments', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ name, comment })
+        body: formData
       }).then(res => {
         if(res.ok) {
           document.getElementById('name').value = '';
           document.getElementById('comment').value = '';
+          document.getElementById('image-upload').value = '';
+          document.getElementById('image-preview').style.display = 'none';
+          selectedImage = null;
           loadComments();
         }
       });
@@ -197,6 +291,7 @@
             <div class="comment" data-id="${c._id}">
               <strong>${c.name}</strong><br/>
               <span>${c.comment}</span><br/>
+              ${c.imageUrl ? `<img src="${c.imageUrl}" class="comment-image" onclick="openModal('${c.imageUrl}')"/>` : ''}
               <small>${new Date(c.date).toLocaleString()}</small>
               
               <div class="actions">
@@ -223,6 +318,11 @@
               <div class="reply-form" id="reply-form-${c._id}">
                 <input type="text" id="reply-name-${c._id}" placeholder="Your Name"/>
                 <textarea id="reply-comment-${c._id}" placeholder="Your Reply"></textarea>
+                <div class="file-upload">
+                  <label for="reply-image-${c._id}" class="file-upload-label">📷 Upload Image</label>
+                  <input type="file" id="reply-image-${c._id}" class="reply-image-upload" accept="image/*"/>
+                  <img id="reply-image-preview-${c._id}" class="image-preview"/>
+                </div>
                 <button onclick="submitReply('${c._id}')">Post Reply</button>
               </div>
               
@@ -230,6 +330,7 @@
                 ${c.replies?.map(r => `
                   <div class="reply" data-id="${r._id}" data-parent="${c._id}">
                     <strong>${r.name}</strong>: ${r.comment}<br/>
+                    ${r.imageUrl ? `<img src="${r.imageUrl}" class="comment-image" onclick="openModal('${r.imageUrl}')"/>` : ''}
                     <small>${new Date(r.date).toLocaleString()}</small>
                     <div class="reactions">
                       <div class="reaction ${r.reactions?.likeUsers?.includes(userIP) ? 'active' : ''}" 
@@ -253,6 +354,24 @@
               </div>
             </div>
           `).join('');
+          
+          // Set up reply image upload handlers
+          data.forEach(c => {
+            const uploadId = `reply-image-${c._id}`;
+            const previewId = `reply-image-preview-${c._id}`;
+            document.getElementById(uploadId)?.addEventListener('change', function(e) {
+              const file = e.target.files[0];
+              if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                  const preview = document.getElementById(previewId);
+                  preview.src = event.target.result;
+                  preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+              }
+            });
+          });
         });
     }
 
@@ -266,14 +385,24 @@
       const comment = document.getElementById(`reply-comment-${commentId}`).value.trim();
       if (!name || !comment) return alert("Fill out both fields!");
 
+      const imageInput = document.getElementById(`reply-image-${commentId}`);
+      const formData = new FormData();
+      formData.append('parentId', commentId);
+      formData.append('name', name);
+      formData.append('comment', comment);
+      if (imageInput.files[0]) {
+        formData.append('image', imageInput.files[0]);
+      }
+
       fetch('/comments/reply', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ parentId: commentId, name, comment })
+        body: formData
       }).then(res => {
         if(res.ok) {
           document.getElementById(`reply-name-${commentId}`).value = '';
           document.getElementById(`reply-comment-${commentId}`).value = '';
+          document.getElementById(`reply-image-${commentId}`).value = '';
+          document.getElementById(`reply-image-preview-${commentId}`).style.display = 'none';
           document.getElementById(`reply-form-${commentId}`).classList.remove('active');
           loadComments();
         }
@@ -288,6 +417,25 @@
       }).then(res => {
         if(res.ok) loadComments();
       });
+    }
+
+    function openModal(imageUrl) {
+      const modal = document.getElementById('image-modal');
+      const modalImg = document.getElementById('modal-image');
+      modal.style.display = 'flex';
+      modalImg.src = imageUrl;
+    }
+
+    function closeModal() {
+      document.getElementById('image-modal').style.display = 'none';
+    }
+
+    // Close modal when clicking outside image
+    window.onclick = function(event) {
+      const modal = document.getElementById('image-modal');
+      if (event.target == modal) {
+        closeModal();
+      }
     }
 
     loadComments();
